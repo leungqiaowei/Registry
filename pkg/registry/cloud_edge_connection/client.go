@@ -174,14 +174,9 @@ func (ec *EdgeClient) reconnect() {
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Printf("Usage: %s <cloud-server-ip:port> <node-id>\n", os.Args[0])
-		fmt.Printf("Example: %s 1.2.3.4:8080 edge-node-001\n", os.Args[0])
-		return
-	}
 
-	cloudAddr := os.Args[1]
-	nodeID := os.Args[2]
+	cloudAddr := "223.166.61.57:11006"
+	nodeID := "test"
 
 	client := NewEdgeClient(cloudAddr, nodeID)
 

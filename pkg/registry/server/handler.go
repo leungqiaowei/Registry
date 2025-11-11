@@ -1,10 +1,11 @@
 package server
 
 import (
-	"hit.edu/framework/pkg/registry/data"
-	"hit.edu/framework/pkg/registry/server/handler"
 	"net/http"
 	"time"
+
+	"hit.edu/framework/pkg/registry/data"
+	"hit.edu/framework/pkg/registry/server/handler"
 )
 
 const (
@@ -37,8 +38,13 @@ type RegistryHandler struct {
 	CatalogueUploadHandler handler.Handler
 	// 处理文件目录下载
 	CatalogueDownloadHandler handler.Handler
-	//
-	GetFileHandler handler.Handler
+
+	// 处理长连接ip保持
+	WebSocketHandler   handler.Handler
+	ClientsHandler     handler.Handler
+	HealthHandler      handler.Handler
+	EdgeRequestProxy   handler.Handler
+	EdgeConnectHandler handler.Handler
 }
 
 func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscribers *data.SubscriptionManager) *RegistryHandler {
@@ -53,19 +59,30 @@ func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscr
 		QueryListHandler:     handler.NewQueryListHandler(dataPath, dataSpecList),
 		SubscribeHandler:     handler.NewSubscribeHandler(subscribers),
 		SubscribeListHandler: handler.NewScribeListHandler(subscribers),
-		GetFileHandler:       handler.NewGetFileHandler(dataPath),
+		//CatalogueUploadHandler:   handler.NewCatalogueUploadHandler(dataPath, fileMapping),
+		//CatalogueDownloadHandler: handler.NewCatalogueDownloadHandler(dataPath, fileMapping),
+		WebSocketHandler:   handler.NewWebSocketHandler(),
+		ClientsHandler:     handler.NewClientsListHandler(),
+		HealthHandler:      handler.NewHealthCheckHandler(),
+		EdgeRequestProxy:   handler.NewEdgeRequestHandler(),
+		EdgeConnectHandler: handler.NewConnectHandler(dataPath),
 	}
 
-	// TODO: 注册路由
-	http.HandleFunc("/download", CORSMiddleware(rh.DownloadHandler.GetHandler()))
-	http.HandleFunc("/upload", CORSMiddleware(rh.UploadHandler.GetHandler()))
-	http.HandleFunc("/forward", CORSMiddleware(rh.ForwardHandler.GetHandler()))
-	http.HandleFunc("/receive", CORSMiddleware(rh.ReceiveHandler.GetHandler()))
-	http.HandleFunc("/delete", CORSMiddleware(rh.DeleteHandler.GetHandler()))
-	http.HandleFunc("/query/exits", CORSMiddleware(rh.QueryIsExistsHandler.GetHandler()))
-	http.HandleFunc("/query/list", CORSMiddleware(rh.QueryListHandler.GetHandler()))
-	http.HandleFunc("/subscribe", CORSMiddleware(rh.SubscribeHandler.GetHandler()))
-	http.HandleFunc("/subscribe/list", CORSMiddleware(rh.SubscribeListHandler.GetHandler()))
+	// TODO: 临时用法,注册路由
+	http.HandleFunc("/download", rh.DownloadHandler.GetHandler())
+	http.HandleFunc("/upload", rh.UploadHandler.GetHandler())
+	http.HandleFunc("/forward", rh.ForwardHandler.GetHandler())
+	http.HandleFunc("/receive", rh.ReceiveHandler.GetHandler())
+	http.HandleFunc("/delete", rh.DeleteHandler.GetHandler())
+	http.HandleFunc("/query/exits", rh.QueryIsExistsHandler.GetHandler())
+	http.HandleFunc("/query/list", rh.QueryListHandler.GetHandler())
+	http.HandleFunc("/subscribe", rh.SubscribeHandler.GetHandler())
+	http.HandleFunc("/subscribe/list", rh.SubscribeListHandler.GetHandler())
+	http.HandleFunc("/websocket", rh.WebSocketHandler.GetHandler())
+	http.HandleFunc("/edge/clients", rh.ClientsHandler.GetHandler())
+	http.HandleFunc("/edge/health", rh.HealthHandler.GetHandler())
+	http.HandleFunc("/edge/connect", rh.EdgeConnectHandler.GetHandler())
+	http.HandleFunc("/edges/", rh.EdgeRequestProxy.GetHandler())
 	return rh
 }
 
