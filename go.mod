@@ -3,6 +3,7 @@ module hit.edu/framework
 go 1.22.0
 
 require (
+	github.com/gorilla/websocket v1.5.3
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0

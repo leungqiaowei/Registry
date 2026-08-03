@@ -29,9 +29,8 @@ package main
 
 import (
 	"hit.edu/framework/cmd/registry/app"
-	"os"
-	
 	"hit.edu/framework/pkg/component-base/cli"
+	"os"
 )
 
 func main() {

@@ -14,23 +14,23 @@ const baseURL = "http://localhost:8081"
 // 测试 GET 请求
 func TestGetFile(t *testing.T) {
 	// 发送 GET 请求来获取文件
-	resp, err := http.Get(fmt.Sprintf("%s/download?filename=1.txt", baseURL))
+	resp, err := http.Get(fmt.Sprintf("%s/download?filename=1_v2.txt", baseURL))
 	if err != nil {
 		t.Fatalf("Failed to make GET request: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// 断言返回的状态码
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected status %d, but got %d", http.StatusOK, resp.StatusCode)
 	}
-	
+
 	// 读取响应内容并进行断言（假设你返回的是文件内容）
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("Failed to read response body: %v", err)
 	}
-	
+
 	// 根据返回的内容做一些断言
 	if string(body) != "This is the test file content" {
 		t.Fatalf("Expected file content, but got: %s", body)
@@ -46,7 +46,7 @@ func TestPostFile(t *testing.T) {
 		t.Fatalf("Failed to make POST request: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// 断言返回的状态码
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("Expected status %d, but got %d", http.StatusOK, resp.StatusCode)
@@ -62,7 +62,7 @@ func TestForwardFile(t *testing.T) {
 		t.Fatalf("Failed to make POST request for forwarding: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// 断言返回的状态码
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected status %d, but got %d", http.StatusOK, resp.StatusCode)
@@ -77,7 +77,7 @@ func TestPostLargeFile(t *testing.T) {
 		t.Fatalf("Failed to make POST request for large file: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// 断言返回的状态码
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("Expected status %d, but got %d", http.StatusOK, resp.StatusCode)
@@ -96,14 +96,14 @@ func TestConcurrency(t *testing.T) {
 				return
 			}
 			defer resp.Body.Close()
-			
+
 			// 断言返回的状态码
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status %d, but got %d for request #%d", http.StatusOK, resp.StatusCode, i)
 			}
 		}(i)
 	}
-	
+
 	// 等待一段时间以确保所有并发请求完成
 	time.Sleep(3 * time.Second)
 }

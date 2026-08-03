@@ -13,7 +13,6 @@ import (
 const RegistryName = "registry"
 
 func NewRegistryCommand() *cobra.Command {
-	
 	cmd := &cobra.Command{
 		Use:  "registry",
 		Long: `资源仓库`,
@@ -29,7 +28,7 @@ func NewRegistryCommand() *cobra.Command {
 			return nil
 		},
 	}
-	
+
 	return cmd
 }
 
@@ -41,29 +40,31 @@ func runCommand(cmd *cobra.Command) error {
 		<-stopCh
 		cancel()
 	}()
-	
+
 	r, err := Setup(ctx)
 	if err != nil {
 		return err
 	}
+	defer r.Destroy()
 	return Run(ctx, r)
 }
 
 func Run(ctx context.Context, r *registry.Registry) error {
-	// 初始化日志模块
 	logs.Init(RegistryName)
 	logs.Infof("Starting Registry, version %s", version.Get())
-	
-	r.Run(ctx)
-	
-	logs.Error("Failed to start Registry")
-	return fmt.Errorf("")
+
+	if err := r.Run(ctx); err != nil {
+		logs.Errorf("Failed to start Registry: %v", err)
+		return err
+	}
+	return nil
 }
 
 func Setup(ctx context.Context) (*registry.Registry, error) {
-	// 创建配置
+	_ = ctx
 	c := registry.NewConfig()
-	//
-	r, err := registry.NewRegistry(c)
-	return r, err
+	if c == nil {
+		return nil, fmt.Errorf("failed to create registry config")
+	}
+	return registry.NewRegistry(c)
 }

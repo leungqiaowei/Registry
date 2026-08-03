@@ -3,6 +3,9 @@ package apis
 import (
 	"hit.edu/framework/pkg/apimachinery/runtime"
 	"hit.edu/framework/pkg/apis/meta"
+	"hit.edu/framework/pkg/registry/data"
+
+	//"hit.edu/framework/pkg/registry/data"
 	"time"
 )
 
@@ -545,13 +548,30 @@ type DeviceSpec struct{}
 type DeviceStatus struct{}
 
 type DataSpec struct {
+	// 这个结构体加上文件的详细数据，便于统一查询，在文件服务器存储文件时按照这种格式来。
+	// 文件名称
+	FileName string `json:"file_name"`
+	// 文件版本号
+	Tag string `json:"tag"`
 	// 对于文件类型的Data
-	// 文件格式
+	Type data.FileType `json:"type"`
+	// 标识文件是否需要持久化存储
+	IsPermanent bool `json:"is_permanent"`
+	// 文件在文件服务器中的存储路径
+	FilePath string `json:"file_path"`
+	// 存储的时间
+	StorageTime time.Time `json:"storage_time"`
+	// 文件所有者（上传文件方的ip？如果能获取的话）
+	Owner string `json:"owner"`
 	// 文件大小
-	// SHA文件校验
+	Size int64 `json:"size"`
+	// 文件哈希值（SHA文件校验，通过对文件内容进行哈希计算（SHA-256）得到的固定长度的字符串。哈希值可以用于验证文件的完整性，确保文件在传输或存储过程中没有被篡改）
+	FileHash string `json:"file_hash"`
 }
 type DataStatus struct{}
 
+// 文件的状态：待订阅和已定阅
+// 在处理过程中，或者已经处理完成。
 type SceneSpec struct{}
 type SceneStatus struct{}
 

@@ -6,7 +6,7 @@ import "net/http"
 type Handler interface {
 	//
 	NewHandlerFunc() func(w http.ResponseWriter, r *http.Request)
-	
+
 	//
 	GetHandler() func(w http.ResponseWriter, r *http.Request)
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"hit.edu/framework/pkg/registry/data"
 	"net"
 )
 
@@ -11,13 +12,20 @@ import (
 type ServingInfo struct {
 	//
 	Listener net.Listener
-	
+
 	// 数据存储位置
 	DataPath string
-	
+
+	// file mapping
+	//FileMapping *data.FileMapping
+	DataSpecList *data.DataSpecList
+
+	// 订阅者列表
+	Subscribers *data.SubscriptionManager
+
 	// 各类Handler
 	Handlers *RegistryHandler
-	
+
 	// TODO: 配置HTTP相关参数
 }
 
@@ -25,19 +33,19 @@ func CreateListener(network, addr string, config net.ListenConfig) (net.Listener
 	if len(network) == 0 {
 		network = "tcp"
 	}
-	
+
 	ln, err := config.Listen(context.TODO(), network, addr)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to listen on %v: %v", addr, err)
 	}
-	
+
 	// get port
 	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
 	if !ok {
 		ln.Close()
 		return nil, 0, fmt.Errorf("invalid listen address: %q", ln.Addr().String())
 	}
-	
+
 	return ln, tcpAddr.Port, nil
 }
 
@@ -60,6 +68,6 @@ type ServingOptions struct {
 func NewServingOptions() *ServingOptions {
 	return &ServingOptions{
 		BindAddress: net.ParseIP("0.0.0.0"),
-		BindPort:    8081,
+		BindPort:    8119,
 	}
 }

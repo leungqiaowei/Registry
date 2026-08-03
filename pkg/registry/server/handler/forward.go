@@ -1,28 +1,29 @@
 package handler
 
 import (
-	"hit.edu/framework/pkg/component-base/logs"
 	"net/http"
+
+	"hit.edu/framework/pkg/component-base/logs"
+	"hit.edu/framework/pkg/registry/data"
+	"hit.edu/framework/pkg/registry/utils"
 )
 
-// HandlePostAndForward 处理 POST 请求并实时转发数据
+// ForwardHandler 处理 POST 请求并实时转发数据
 // TODO:
 
 type ForwardHandler struct {
-	//
-	DataPath string
-	//
-	Handler func(w http.ResponseWriter, r *http.Request)
+	DataPath     string
+	DataSpecList *data.DataSpecList
+	Handler      func(w http.ResponseWriter, r *http.Request)
 }
 
 func (d *ForwardHandler) GetHandler() func(w http.ResponseWriter, r *http.Request) {
 	return d.Handler
 }
 
-func NewForwardHandler(dataPath string) *ForwardHandler {
-	dh := &ForwardHandler{
-		DataPath: dataPath,
-	}
+// NewForwardHandler 创建一个新的 ForwardHandler 实例
+func NewForwardHandler(dataPath string, dataSpecList *data.DataSpecList) *ForwardHandler {
+	dh := &ForwardHandler{DataPath: dataPath, DataSpecList: dataSpecList}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
@@ -31,44 +32,26 @@ var _ Handler = &ForwardHandler{}
 
 func (d *ForwardHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		
-		if r.Method != http.MethodPost {
-			http.Error(w, "Only POST is supported", http.StatusMethodNotAllowed)
+		clusterID := r.Header.Get("ClusterID")
+		if clusterID == "" {
+			clusterID = r.Header.Get("clusterID")
+		}
+		if clusterID == "" {
+			utils.WriteError(w, http.StatusBadRequest, "missing ClusterID in request header")
+			logs.Infof("Missing ClusterID in request header")
 			return
 		}
-		// 获取转发文件名称
-		fileName := r.URL.Query().Get("fileName")
-		if fileName == "" {
-			http.Error(w, "Filename is required", http.StatusBadRequest)
-			return
-		}
-		// 获取目标地址（转发目标）
-		targetURL := r.URL.Query().Get("target")
-		if targetURL == "" {
-			http.Error(w, "Target URL is required for forwarding", http.StatusBadRequest)
-			return
-		}
-		targetURL = targetURL + "/post?filename=" + fileName
-		defer r.Body.Close()
-		
-		// 将post的请求体加载为新的请求体
-		newRequest, err := http.NewRequest(http.MethodPost, targetURL, r.Body)
+
+		newURL, err := utils.TransformURL(r)
 		if err != nil {
-			http.Error(w, "Failed to create new request", http.StatusInternalServerError)
-			logs.Info("Error creating new request: %v", err)
+			utils.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		resp, err := http.Post(targetURL, "application/octet-stream", newRequest.Body)
-		if err != nil {
-			http.Error(w, "Failed to forward data to target", http.StatusInternalServerError)
-			logs.Info("Failed to forward data to %s: %v", targetURL, err)
+
+		logs.Infof("Forwarding to URL: %s", newURL)
+		if err := utils.ForwardRequest(r, newURL, w); err != nil {
+			logs.Infof("Failed to forward request: %v", err)
 			return
 		}
-		defer resp.Body.Close()
-		logs.Info("Data successfully forwarded to %s with status %d", targetURL, resp.StatusCode)
-		
-		// 关闭写端并结束
-		w.WriteHeader(http.StatusOK)
-		logs.Info("Data transfer completed")
 	}
 }
