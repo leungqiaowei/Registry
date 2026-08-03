@@ -7,15 +7,10 @@ import (
 	"net/http"
 )
 
-// TODO:
-
 type UploadHandler struct {
-	//
-	DataPath string
-	//FileMapping *data.FileMapping
+	DataPath     string
 	DataSpecList *data.DataSpecList
-
-	Handler func(w http.ResponseWriter, r *http.Request)
+	Handler      func(w http.ResponseWriter, r *http.Request)
 }
 
 func (d *UploadHandler) GetHandler() func(w http.ResponseWriter, r *http.Request) {
@@ -23,10 +18,7 @@ func (d *UploadHandler) GetHandler() func(w http.ResponseWriter, r *http.Request
 }
 
 func NewUploadHandler(dataPath string, dataSpecList *data.DataSpecList) *UploadHandler {
-	dh := &UploadHandler{
-		DataPath:     dataPath,
-		DataSpecList: dataSpecList,
-	}
+	dh := &UploadHandler{DataPath: dataPath, DataSpecList: dataSpecList}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
@@ -36,43 +28,33 @@ var _ Handler = &UploadHandler{}
 func (d *UploadHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Only POST is supported", http.StatusMethodNotAllowed)
+			utils.WriteError(w, http.StatusMethodNotAllowed, "only POST is supported")
 			return
 		}
 
 		fileName, tag, owner, fileType, err := utils.GetFileParams(r, "v1.0.0")
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error getting file parameters: %v", err), http.StatusBadRequest)
+			utils.WriteError(w, http.StatusBadRequest, fmt.Sprintf("error getting file parameters: %v", err))
 			return
 		}
-
-		// 获取是否需要永久存储的参数
-		//isPermanent := utils.GetQueryParamCaseInsensitive(param, "isPermanent") == "true"
-
-		// 通过 upload 上传的文件默认为持久化存储， receive 收到的文件默认为临时存储(区别在于 下载之后是否删除)
 
 		switch fileType {
 		case "folder", "completion":
 			utils.ReceiveDir(w, r, d.DataPath)
-			_, err := d.DataSpecList.SaveFolder(d.DataPath, fileName, tag, owner, true)
-			//err := d.FileMapping.SaveFolder(d.DataPath, fileName, tag, true)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to save folder: %v", err), http.StatusInternalServerError)
+			if _, err := d.DataSpecList.SaveFolder(d.DataPath, fileName, tag, owner, true); err != nil {
+				utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save folder: %v", err))
 				return
 			}
 		case "file":
-			//err := d.FileMapping.SaveFile(d.DataPath, fileName, tag, true, r.Body)
-			_, err := d.DataSpecList.SaveFile(d.DataPath, fileName, tag, owner, true, r.Body)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to save file: %v", err), http.StatusInternalServerError)
+			if _, err := d.DataSpecList.SaveFile(d.DataPath, fileName, tag, owner, true, r.Body); err != nil {
+				utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save file: %v", err))
 				return
 			}
 		default:
-			http.Error(w, "Invalid file type", http.StatusBadRequest)
+			utils.WriteError(w, http.StatusBadRequest, "invalid file type")
 			return
 		}
 
-		//w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("File uploaded successfully"))
+		utils.WriteJSON(w, http.StatusCreated, map[string]string{"message": "file uploaded successfully"})
 	}
 }

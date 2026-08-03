@@ -1,28 +1,27 @@
 package registry
 
 import (
+	"fmt"
 	"hit.edu/framework/pkg/component-base/logs"
 	"hit.edu/framework/pkg/registry/data"
 	"hit.edu/framework/pkg/registry/server"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
 
 const (
 	DataPath = "./tmp/data"
-	//DataPath = "/home/public/registry"
 )
 
 // Config为对外暴露的配置，可以简化
 type Config struct {
-	// Serving Info
 	ServingInfo *server.ServingInfo
 
-	// 关闭延迟
 	ShutdownTimeout time.Duration
 
-	// minRequestTimeout is how short the request timeout can be.  This is used to build the RESTHandler
 	MinRequestTimeout time.Duration
 
 	Extra
@@ -33,61 +32,53 @@ type Extra struct {
 }
 
 func NewConfig() *Config {
-	//FIXME: 如果端口已经被占用，错误处理
-
-	// 在这里设置各种选项
 	servingOptions := server.NewServingOptions()
-
-	// 创建Serving Info
-	servingInfo := NewServingInfo(servingOptions)
-	if servingInfo == nil {
-		logs.Error("Serving Info is Empty")
+	servingInfo, err := NewServingInfo(servingOptions)
+	if err != nil {
+		logs.Errorf("Failed to create serving info: %v", err)
 		return nil
 	}
 
-	// 完成所有参数配置
-	c := &Config{
+	return &Config{
 		ServingInfo:       servingInfo,
-		ShutdownTimeout:   time.Duration(60) * time.Second,
+		ShutdownTimeout:   60 * time.Second,
 		Extra:             Extra{},
-		MinRequestTimeout: 1800,
+		MinRequestTimeout: 1800 * time.Second,
 	}
-
-	return c
 }
 
-func NewServingInfo(s *server.ServingOptions) *server.ServingInfo {
-	// 格式检查
+func NewServingInfo(s *server.ServingOptions) (*server.ServingInfo, error) {
 	if s == nil {
-		return nil
+		return nil, fmt.Errorf("serving options is nil")
 	}
 	if s.BindPort <= 0 && s.Listener == nil {
-		return nil
+		return nil, fmt.Errorf("bind port must be greater than 0 when listener is nil")
+	}
+
+	if err := os.MkdirAll(filepath.Clean(DataPath), 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create data path: %w", err)
 	}
 
 	if s.Listener == nil {
-
-		var err error
 		addr := net.JoinHostPort(s.BindAddress.String(), strconv.Itoa(s.BindPort))
-
 		c := net.ListenConfig{}
 
-		s.Listener, s.BindPort, err = server.CreateListener(s.BindNetwork, addr, c)
+		listener, bindPort, err := server.CreateListener(s.BindNetwork, addr, c)
 		if err != nil {
-			return nil
+			return nil, err
 		}
+		s.Listener = listener
+		s.BindPort = bindPort
 	}
-	//fileMapping := data.NewFileMapping()
-	dataSpecList := data.NewDataSpecList()
 
+	dataSpecList := data.NewDataSpecList()
 	subscribers := data.NewSubscriptionManager()
 
 	return &server.ServingInfo{
-		Listener: s.Listener,
-		DataPath: DataPath,
-		//FileMapping: fileMapping,
+		Listener:     s.Listener,
+		DataPath:     DataPath,
 		DataSpecList: dataSpecList,
 		Subscribers:  subscribers,
 		Handlers:     server.NewRegistryHandler(DataPath, dataSpecList, subscribers),
-	}
+	}, nil
 }

@@ -1,10 +1,12 @@
 package server
 
 import (
-	"hit.edu/framework/pkg/registry/data"
-	"hit.edu/framework/pkg/registry/server/handler"
 	"net/http"
 	"time"
+
+	"hit.edu/framework/pkg/registry/data"
+	"hit.edu/framework/pkg/registry/edge"
+	"hit.edu/framework/pkg/registry/server/handler"
 )
 
 const (
@@ -22,10 +24,8 @@ type RegistryHandler struct {
 	// 处理文件接收
 	ReceiveHandler handler.Handler
 	// 处理文件删除
-	// TODO:
 	DeleteHandler handler.Handler
 	// 处理文件查询
-	// TODO:
 	QueryIsExistsHandler handler.Handler
 	// 处理文件列表查询
 	QueryListHandler handler.Handler
@@ -37,12 +37,16 @@ type RegistryHandler struct {
 	CatalogueUploadHandler handler.Handler
 	// 处理文件目录下载
 	CatalogueDownloadHandler handler.Handler
-	//
-	GetFileHandler handler.Handler
+
+	// 云边反向隧道相关接口
+	WebSocketHandler handler.Handler
+	ClientsHandler   handler.Handler
+	HealthHandler    handler.Handler
+	EdgeRequestProxy handler.Handler
 }
 
 func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscribers *data.SubscriptionManager) *RegistryHandler {
-	// TODO: Download等改成Handler, 实现ServeHTTP等函数
+	tunnelManager := edge.NewTunnelManager()
 	rh := &RegistryHandler{
 		UploadHandler:        handler.NewUploadHandler(dataPath, dataSpecList),
 		DownloadHandler:      handler.NewDownloadHandler(dataPath, dataSpecList),
@@ -53,19 +57,25 @@ func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscr
 		QueryListHandler:     handler.NewQueryListHandler(dataPath, dataSpecList),
 		SubscribeHandler:     handler.NewSubscribeHandler(subscribers),
 		SubscribeListHandler: handler.NewScribeListHandler(subscribers),
-		GetFileHandler:       handler.NewGetFileHandler(dataPath),
+		WebSocketHandler:     handler.NewWebSocketHandler(tunnelManager),
+		ClientsHandler:       handler.NewClientsListHandler(tunnelManager),
+		HealthHandler:        handler.NewHealthCheckHandler(tunnelManager),
+		EdgeRequestProxy:     handler.NewEdgeRequestHandler(tunnelManager),
 	}
 
-	// TODO: 注册路由
-	http.HandleFunc("/download", CORSMiddleware(rh.DownloadHandler.GetHandler()))
-	http.HandleFunc("/upload", CORSMiddleware(rh.UploadHandler.GetHandler()))
-	http.HandleFunc("/forward", CORSMiddleware(rh.ForwardHandler.GetHandler()))
-	http.HandleFunc("/receive", CORSMiddleware(rh.ReceiveHandler.GetHandler()))
-	http.HandleFunc("/delete", CORSMiddleware(rh.DeleteHandler.GetHandler()))
-	http.HandleFunc("/query/exits", CORSMiddleware(rh.QueryIsExistsHandler.GetHandler()))
-	http.HandleFunc("/query/list", CORSMiddleware(rh.QueryListHandler.GetHandler()))
-	http.HandleFunc("/subscribe", CORSMiddleware(rh.SubscribeHandler.GetHandler()))
-	http.HandleFunc("/subscribe/list", CORSMiddleware(rh.SubscribeListHandler.GetHandler()))
+	http.HandleFunc("/download", rh.DownloadHandler.GetHandler())
+	http.HandleFunc("/upload", rh.UploadHandler.GetHandler())
+	http.HandleFunc("/forward", rh.ForwardHandler.GetHandler())
+	http.HandleFunc("/receive", rh.ReceiveHandler.GetHandler())
+	http.HandleFunc("/delete", rh.DeleteHandler.GetHandler())
+	http.HandleFunc("/query/exits", rh.QueryIsExistsHandler.GetHandler())
+	http.HandleFunc("/query/list", rh.QueryListHandler.GetHandler())
+	http.HandleFunc("/subscribe", rh.SubscribeHandler.GetHandler())
+	http.HandleFunc("/subscribe/list", rh.SubscribeListHandler.GetHandler())
+	http.HandleFunc("/edge/ws", rh.WebSocketHandler.GetHandler())
+	http.HandleFunc("/edge/clients", rh.ClientsHandler.GetHandler())
+	http.HandleFunc("/edge/health", rh.HealthHandler.GetHandler())
+	http.HandleFunc("/edges/", rh.EdgeRequestProxy.GetHandler())
 	return rh
 }
 
