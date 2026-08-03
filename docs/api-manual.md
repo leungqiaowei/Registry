@@ -18,9 +18,61 @@ http://localhost:8119
 ./tmp/data
 ```
 
-## 2. 通用约定
+## 2. 命令行使用
 
-### 2.1 默认版本 tag
+### 2.1 启动云端服务
+
+```bash
+./registry
+```
+
+或直接运行：
+
+```bash
+go run ./cmd/registry
+```
+
+### 2.2 启动边侧 Agent
+
+边侧 Agent 主动连接云端公网 IP，建立反向隧道：
+
+```bash
+./registry edge --cloud-url=ws://120.220.95.189:8119/edge/ws --edge-id=edge-a
+```
+
+所有参数：
+
+| 参数 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `--cloud-url` | 是 | 无 | 云端公网 WebSocket 地址 |
+| `--edge-id` | 否 | 主机名 | 边侧节点唯一标识 |
+| `--local-base-url` | 否 | `http://127.0.0.1:8119` | 边侧本地要代理的服务 |
+| `--token` | 否 | 无 | 云端鉴权 Token |
+| `--reconnect-interval` | 否 | `5s` | 断线重连间隔 |
+| `--heartbeat-interval` | 否 | `30s` | 心跳间隔 |
+| `--request-timeout` | 否 | `25s` | 边侧请求本地服务超时 |
+
+示例：边侧本地服务端口是 `8080`：
+
+```bash
+./registry edge \
+  --cloud-url=ws://120.220.95.189:48119/edge/ws \
+  --edge-id=factory-001 \
+  --local-base-url=http://127.0.0.1:8080
+```
+
+### 2.3 查看帮助
+
+```bash
+./registry --help
+./registry edge --help
+```
+
+---
+
+## 3. 通用约定
+
+### 3.1 默认版本 tag
 
 所有涉及文件名和版本的接口中，如果未传 `tag`，默认使用：
 
@@ -28,7 +80,7 @@ http://localhost:8119
 v1.0.0
 ```
 
-### 2.2 文件类型 Header
+### 3.2 文件类型 Header
 
 涉及文件上传、接收、下载的接口支持请求头：
 
@@ -44,7 +96,7 @@ FileType: file
 | `folder` | 文件夹 |
 | `completion` | 文件夹传输完成标识，当前逻辑按文件夹处理 |
 
-### 2.3 错误响应格式
+### 3.3 错误响应格式
 
 多数接口错误返回为 JSON：
 
@@ -55,7 +107,7 @@ FileType: file
 }
 ```
 
-### 2.4 文件元数据格式
+### 3.4 文件元数据格式
 
 查询接口返回的文件元数据格式如下：
 
@@ -89,9 +141,9 @@ FileType: file
 
 ---
 
-# 3. 文件仓库接口
+# 4. 文件仓库接口
 
-## 3.1 上传文件 `/upload`
+## 4.1 上传文件 `/upload`
 
 ### 功能说明
 
@@ -144,7 +196,7 @@ curl.exe -X POST "http://localhost:8119/upload?filename=test.txt&tag=v1.0.0" \
 
 ---
 
-## 3.2 下载文件 `/download`
+## 4.2 下载文件 `/download`
 
 ### 功能说明
 
@@ -207,7 +259,7 @@ Content-Type: application/octet-stream
 
 ---
 
-## 3.3 接收文件 `/receive`
+## 4.3 接收文件 `/receive`
 
 ### 功能说明
 
@@ -273,7 +325,7 @@ curl.exe -X POST "http://localhost:8119/receive?target=http://127.0.0.1:2379/v2/
 
 ---
 
-## 3.4 删除文件 `/delete`
+## 4.4 删除文件 `/delete`
 
 ### 功能说明
 
@@ -316,7 +368,7 @@ curl.exe -X DELETE "http://localhost:8119/delete?filename=test.txt&tag=v1.0.0"
 
 ---
 
-## 3.5 查询单个文件 `/query/exits`
+## 4.5 查询单个文件 `/query/exits`
 
 ### 功能说明
 
@@ -369,7 +421,7 @@ curl.exe "http://localhost:8119/query/exits?filename=test.txt&tag=v1.0.0"
 
 ---
 
-## 3.6 查询文件列表 `/query/list`
+## 4.6 查询文件列表 `/query/list`
 
 ### 功能说明
 
@@ -419,7 +471,7 @@ curl.exe "http://localhost:8119/query/list"
 
 ---
 
-## 3.7 转发文件 `/forward`
+## 4.7 转发文件 `/forward`
 
 ### 功能说明
 
@@ -484,9 +536,9 @@ http://10.0.0.12:8119/receive?filename=test.txt&tag=v1.0.0
 
 ---
 
-# 4. 文件订阅接口
+# 5. 文件订阅接口
 
-## 4.1 订阅文件 `/subscribe`
+## 5.1 订阅文件 `/subscribe`
 
 ### 功能说明
 
@@ -535,7 +587,7 @@ curl.exe -X POST "http://localhost:8119/subscribe?filename=test.txt&tag=v1.0.0&c
 
 ---
 
-## 4.2 查询订阅列表 `/subscribe/list`
+## 5.2 查询订阅列表 `/subscribe/list`
 
 ### 功能说明
 
@@ -578,7 +630,7 @@ curl.exe "http://localhost:8119/subscribe/list"
 
 ---
 
-# 5. 云边反向隧道接口
+# 6. 云边反向隧道接口
 
 云边反向隧道用于解决以下场景：
 
@@ -596,7 +648,7 @@ curl.exe "http://localhost:8119/subscribe/list"
 边侧执行本地 HTTP 请求后，将响应通过 WebSocket 返回云端。
 ```
 
-## 5.1 边侧建立长连接 `/edge/ws`
+## 6.1 边侧建立长连接 `/edge/ws`
 
 ### 功能说明
 
@@ -663,7 +715,7 @@ ws://localhost:8119/edge/ws?edge_id=edge-a
 
 ---
 
-## 5.2 查询在线边侧节点 `/edge/clients`
+## 6.2 查询在线边侧节点 `/edge/clients`
 
 ### 功能说明
 
@@ -703,7 +755,7 @@ curl.exe "http://localhost:8119/edge/clients"
 
 ---
 
-## 5.3 检查边侧健康 `/edge/health`
+## 6.3 检查边侧健康 `/edge/health`
 
 ### 功能说明
 
@@ -740,7 +792,7 @@ curl.exe "http://localhost:8119/edge/health?edge_id=edge-a"
 
 ---
 
-## 5.4 云端代理访问边侧 `/edges/{edge_id}/{target_path}`
+## 6.4 云端代理访问边侧 `/edges/{edge_id}/{target_path}`
 
 ### 功能说明
 
@@ -833,9 +885,9 @@ DELETE http://127.0.0.1:8119/delete?filename=test.txt&tag=v1.0.0
 
 ---
 
-# 6. 云边隧道协议详情
+# 7. 云边隧道协议详情
 
-## 6.1 TunnelMessage
+## 7.1 TunnelMessage
 
 云端和边侧通过 WebSocket 传输统一消息：
 
@@ -859,7 +911,7 @@ DELETE http://127.0.0.1:8119/delete?filename=test.txt&tag=v1.0.0
 | `timestamp` | 消息时间 |
 | `payload` | 具体消息体 |
 
-## 6.2 request payload
+## 7.2 request payload
 
 云端发给边侧的请求消息：
 
@@ -883,7 +935,7 @@ DELETE http://127.0.0.1:8119/delete?filename=test.txt&tag=v1.0.0
 | `header` | HTTP Header |
 | `body` | 请求体，二进制内容会经过 JSON 编码传输 |
 
-## 6.3 response payload
+## 7.3 response payload
 
 边侧返回给云端的响应消息：
 
@@ -909,9 +961,9 @@ DELETE http://127.0.0.1:8119/delete?filename=test.txt&tag=v1.0.0
 
 ---
 
-# 7. 推荐测试流程
+# 8. 推荐测试流程
 
-## 7.1 测试普通文件接口
+## 8.1 测试普通文件接口
 
 ```bash
 curl.exe -X POST "http://localhost:8119/upload?filename=test.txt&tag=v1" --data-binary "@test.txt"
@@ -921,7 +973,7 @@ curl.exe -X DELETE "http://localhost:8119/delete?filename=test.txt&tag=v1"
 curl.exe "http://localhost:8119/query/list"
 ```
 
-## 7.2 测试边缘基础接口
+## 8.2 测试边缘基础接口
 
 ```bash
 curl.exe "http://localhost:8119/edge/clients"
@@ -931,25 +983,40 @@ curl.exe "http://localhost:8119/edges/edge-a/query/list"
 
 如果 `edge-a` 未连接，预期返回 `502`。
 
-## 7.3 测试完整云边链路
+## 8.3 测试完整云边链路
 
-完整链路需要先启动边侧 Agent，并让它连接云端：
+完整链路需要先启动云端服务和边侧 Agent：
 
-```text
-ws://<cloud-public-ip>:<port>/edge/ws?edge_id=edge-a
+**步骤 1：云端启动 Registry**
+
+```bash
+./registry
 ```
 
-连接成功后，在云端访问：
+**步骤 2：边侧连接云端**
+
+```bash
+./registry edge --cloud-url=ws://<cloud-public-ip>:<port>/edge/ws --edge-id=edge-a
+```
+
+**步骤 3：云端访问边侧**
 
 ```bash
 curl.exe "http://<cloud-public-ip>:<port>/edges/edge-a/query/list"
 ```
 
-如果成功，说明云端已经可以通过反向隧道访问边侧内网服务。
+如果返回边侧的文件列表，说明云端已通过反向隧道成功访问边侧内网服务。
+
+同样可以操作边侧的其他接口：
+
+```bash
+curl.exe "http://<cloud-public-ip>:<port>/edges/edge-a/upload?filename=test.txt" --data-binary "@test.txt"
+curl.exe "http://<cloud-public-ip>:<port>/edges/edge-a/download?filename=test.txt&tag=v1.0.0" -o test.txt
+```
 
 ---
 
-# 8. 接口总表
+# 9. 接口总表
 
 | 分类 | 接口 | 方法 | 说明 |
 |---|---|---|---|

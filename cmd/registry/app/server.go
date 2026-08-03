@@ -15,7 +15,10 @@ const RegistryName = "registry"
 func NewRegistryCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:  "registry",
-		Long: `资源仓库`,
+		Long: `资源仓库 - 文件仓库 / 云边反向隧道服务
+
+默认运行云端 Registry 服务。
+使用 registry edge 子命令启动边侧 Agent，主动连接云端建立云边反向隧道。`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCommand(cmd)
 		},
@@ -28,6 +31,8 @@ func NewRegistryCommand() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.AddCommand(NewEdgeCommand())
 
 	return cmd
 }
