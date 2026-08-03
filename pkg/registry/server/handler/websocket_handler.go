@@ -1,44 +1,16 @@
 package handler
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
+	"hit.edu/framework/pkg/registry/edge"
+	"hit.edu/framework/pkg/registry/utils"
 	"net/http"
-	"sync"
-	"time"
-
-	"github.com/gorilla/websocket"
 )
 
-var (
-	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			return true // 生产环境应该验证来源
-		},
-	}
-
-	clients    = make(map[*websocket.Conn]*ClientInfo)
-	clientsMux sync.RWMutex
-)
-
-type ClientInfo struct {
-	IP        string          `json:"ip"`
-	Conn      *websocket.Conn `json:"-"`
-	Connected time.Time       `json:"connected"`
-	ClientID  string          `json:"client_id"`
-}
-
-type WSMessage struct {
-	Type      string      `json:"type"` // heartbeat, health_request, health_response
-	Payload   interface{} `json:"payload"`
-	Timestamp string      `json:"timestamp"`
-}
-
-// WebSocketHandler 对应 WebSocket 连接请求
+// WebSocketHandler 接收边侧主动发起的云边隧道长连接。
 // 方法 GET
-// URL /ws
+// URL /edge/ws?edge_id=<edge_id>
 type WebSocketHandler struct {
+	Manager *edge.TunnelManager
 	Handler func(w http.ResponseWriter, r *http.Request)
 }
 
@@ -46,8 +18,8 @@ func (d *WebSocketHandler) GetHandler() func(w http.ResponseWriter, r *http.Requ
 	return d.Handler
 }
 
-func NewWebSocketHandler() *WebSocketHandler {
-	dh := &WebSocketHandler{}
+func NewWebSocketHandler(manager *edge.TunnelManager) *WebSocketHandler {
+	dh := &WebSocketHandler{Manager: manager}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
@@ -57,54 +29,21 @@ var _ Handler = &WebSocketHandler{}
 func (d *WebSocketHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Only GET is supported", http.StatusMethodNotAllowed)
+			utils.WriteError(w, http.StatusMethodNotAllowed, "only GET is supported")
 			return
 		}
-
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Printf("WebSocket升级失败: %v", err)
+		if err := d.Manager.AcceptEdge(w, r); err != nil {
+			utils.WriteError(w, http.StatusBadRequest, err.Error())
 			return
-		}
-		defer conn.Close()
-
-		clientIP := r.RemoteAddr
-		clientID := r.Header.Get("X-Client-ID")
-		if clientID == "" {
-			clientID = fmt.Sprintf("client-%d", time.Now().UnixNano())
-		}
-
-		// 注册客户端
-		client := &ClientInfo{
-			IP:        clientIP,
-			Conn:      conn,
-			Connected: time.Now(),
-			ClientID:  clientID,
-		}
-
-		registerClient(client)
-		defer unregisterClient(client)
-
-		log.Printf("WebSocket客户端连接: %s (%s)", clientID, clientIP)
-
-		// 处理消息
-		for {
-			var msg WSMessage
-			err := conn.ReadJSON(&msg)
-			if err != nil {
-				log.Printf("读取WebSocket消息失败 %s: %v", clientID, err)
-				break
-			}
-
-			handleClientMessage(client, msg)
 		}
 	}
 }
 
-// ClientsListHandler 对应客户端列表查询请求
+// ClientsListHandler 查询当前在线边侧节点。
 // 方法 GET
 // URL /edge/clients
 type ClientsListHandler struct {
+	Manager *edge.TunnelManager
 	Handler func(w http.ResponseWriter, r *http.Request)
 }
 
@@ -112,8 +51,8 @@ func (d *ClientsListHandler) GetHandler() func(w http.ResponseWriter, r *http.Re
 	return d.Handler
 }
 
-func NewClientsListHandler() *ClientsListHandler {
-	dh := &ClientsListHandler{}
+func NewClientsListHandler(manager *edge.TunnelManager) *ClientsListHandler {
+	dh := &ClientsListHandler{Manager: manager}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
@@ -123,36 +62,18 @@ var _ Handler = &ClientsListHandler{}
 func (d *ClientsListHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Only GET is supported", http.StatusMethodNotAllowed)
+			utils.WriteError(w, http.StatusMethodNotAllowed, "only GET is supported")
 			return
 		}
-
-		clientsMux.RLock()
-		defer clientsMux.RUnlock()
-
-		clientList := make([]*ClientInfo, 0, len(clients))
-		for _, client := range clients {
-			clientList = append(clientList, client)
-		}
-
-		// 将客户端列表序列化为 JSON
-		response, err := json.Marshal(clientList)
-		if err != nil {
-			http.Error(w, "Failed to serialize client list", http.StatusInternalServerError)
-			return
-		}
-
-		// 设置响应头并返回结果
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(response)
+		utils.WriteJSON(w, http.StatusOK, d.Manager.ListEdges())
 	}
 }
 
-// HealthCheckHandler 对应健康检查请求
+// HealthCheckHandler 通过云边隧道检查边侧节点健康。
 // 方法 GET
-// URL /edge/health
+// URL /edge/health?edge_id=<edge_id>
 type HealthCheckHandler struct {
+	Manager *edge.TunnelManager
 	Handler func(w http.ResponseWriter, r *http.Request)
 }
 
@@ -160,8 +81,8 @@ func (d *HealthCheckHandler) GetHandler() func(w http.ResponseWriter, r *http.Re
 	return d.Handler
 }
 
-func NewHealthCheckHandler() *HealthCheckHandler {
-	dh := &HealthCheckHandler{}
+func NewHealthCheckHandler(manager *edge.TunnelManager) *HealthCheckHandler {
+	dh := &HealthCheckHandler{Manager: manager}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
@@ -171,195 +92,26 @@ var _ Handler = &HealthCheckHandler{}
 func (d *HealthCheckHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Only GET is supported", http.StatusMethodNotAllowed)
+			utils.WriteError(w, http.StatusMethodNotAllowed, "only GET is supported")
 			return
 		}
 
-		clientID := r.URL.Query().Get("client_id")
-
-		var results []map[string]interface{}
-
-		if clientID == "" {
-			// 检查所有客户端
-			results = requestAllClientsHealth()
-		} else {
-			// 检查特定客户端
-			result := requestClientHealth(clientID)
-			results = []map[string]interface{}{result}
+		edgeID := r.URL.Query().Get("edge_id")
+		if edgeID == "" {
+			utils.WriteError(w, http.StatusBadRequest, "edge_id is required")
+			return
 		}
 
-		response, err := json.Marshal(map[string]interface{}{
-			"timestamp":       time.Now().Format(time.RFC3339),
-			"checked_clients": len(results),
-			"results":         results,
-		})
+		resp, err := d.Manager.Request(r.Context(), edgeID, &edge.TunnelRequest{
+			Method: http.MethodGet,
+			Path:   "/health",
+		}, 10_000_000_000)
 		if err != nil {
-			http.Error(w, "Failed to serialize health check results", http.StatusInternalServerError)
+			utils.WriteError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(response)
+		utils.CopyHeaders(w.Header(), resp.Header)
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(resp.Body)
 	}
-}
-
-// 以下辅助函数保持不变
-// 在云侧的 handleClientMessage 函数中修改
-func handleClientMessage(client *ClientInfo, msg WSMessage) {
-	switch msg.Type {
-	case "heartbeat":
-		log.Printf("收到心跳来自 %s", client.ClientID)
-		// 更新最后活跃时间
-		client.Connected = time.Now()
-
-	case "health_response":
-		log.Printf("收到健康响应来自 %s", client.ClientID)
-		// 可以存储或转发健康响应
-		if payload, ok := msg.Payload.(map[string]interface{}); ok {
-			log.Printf("   健康状态: %v", payload)
-		}
-
-	case "edge_response":
-		log.Printf("收到边侧响应来自 %s", client.ClientID)
-		// 处理边侧响应
-		HandleEdgeResponse(map[string]interface{}{
-			"payload": msg.Payload,
-		})
-
-	default:
-		log.Printf("收到未知消息类型来自 %s: %s", client.ClientID, msg.Type)
-	}
-}
-
-// 向特定客户端发送消息
-func sendToClient(client *ClientInfo, msg WSMessage) error {
-	msg.Timestamp = time.Now().Format(time.RFC3339)
-	return client.Conn.WriteJSON(msg)
-}
-
-// 向所有客户端广播消息
-func broadcastToClients(msg WSMessage) {
-	clientsMux.RLock()
-	defer clientsMux.RUnlock()
-
-	for _, client := range clients {
-		if err := sendToClient(client, msg); err != nil {
-			log.Printf("向客户端 %s 发送消息失败: %v", client.ClientID, err)
-		}
-	}
-}
-
-func requestAllClientsHealth() []map[string]interface{} {
-	clientsMux.RLock()
-	defer clientsMux.RUnlock()
-
-	var results []map[string]interface{}
-	healthMsg := WSMessage{
-		Type: "health_request",
-		Payload: map[string]string{
-			"request_id": fmt.Sprintf("req-%d", time.Now().UnixNano()),
-		},
-	}
-
-	for _, client := range clients {
-		result := map[string]interface{}{
-			"client_id": client.ClientID,
-			"ip":        client.IP,
-			"connected": client.Connected.Format(time.RFC3339),
-		}
-
-		if err := sendToClient(client, healthMsg); err != nil {
-			result["status"] = "error"
-			result["error"] = err.Error()
-		} else {
-			result["status"] = "health_request_sent"
-			result["sent_at"] = time.Now().Format(time.RFC3339)
-		}
-
-		results = append(results, result)
-	}
-
-	return results
-}
-
-func requestClientHealth(clientID string) map[string]interface{} {
-	client := findClientByID(clientID)
-	if client == nil {
-		return map[string]interface{}{
-			"client_id": clientID,
-			"status":    "error",
-			"error":     "client not found",
-		}
-	}
-
-	healthMsg := WSMessage{
-		Type: "health_request",
-		Payload: map[string]string{
-			"request_id": fmt.Sprintf("req-%d", time.Now().UnixNano()),
-		},
-	}
-
-	if err := sendToClient(client, healthMsg); err != nil {
-		return map[string]interface{}{
-			"client_id": clientID,
-			"status":    "error",
-			"error":     err.Error(),
-		}
-	}
-
-	return map[string]interface{}{
-		"client_id": clientID,
-		"status":    "health_request_sent",
-		"sent_at":   time.Now().Format(time.RFC3339),
-	}
-}
-
-// 客户端管理
-func registerClient(client *ClientInfo) {
-	clientsMux.Lock()
-	defer clientsMux.Unlock()
-	clients[client.Conn] = client
-}
-
-func unregisterClient(client *ClientInfo) {
-	clientsMux.Lock()
-	defer clientsMux.Unlock()
-	delete(clients, client.Conn)
-	log.Printf("WebSocket客户端断开: %s", client.ClientID)
-}
-
-func findClientByID(clientID string) *ClientInfo {
-	clientsMux.RLock()
-	defer clientsMux.RUnlock()
-
-	for _, client := range clients {
-		if client.ClientID == clientID {
-			return client
-		}
-	}
-	return nil
-}
-
-// 请求客户端健康检查
-func handleHealthCheckRequest(w http.ResponseWriter, r *http.Request) {
-	clientID := r.URL.Query().Get("client_id")
-
-	var results []map[string]interface{}
-
-	if clientID == "" {
-		// 检查所有客户端
-		results = requestAllClientsHealth()
-	} else {
-		// 检查特定客户端
-		result := requestClientHealth(clientID)
-		results = []map[string]interface{}{result}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"timestamp":       time.Now().Format(time.RFC3339),
-		"checked_clients": len(results),
-		"results":         results,
-	})
 }

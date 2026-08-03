@@ -1,16 +1,14 @@
 package handler
 
 import (
-	"encoding/json"
 	"hit.edu/framework/pkg/registry/data"
+	"hit.edu/framework/pkg/registry/utils"
 	"net/http"
 )
 
 type SubscribeListHandler struct {
-	//
 	Subscribers *data.SubscriptionManager
-	//
-	Handler func(w http.ResponseWriter, r *http.Request)
+	Handler     func(w http.ResponseWriter, r *http.Request)
 }
 
 func (d *SubscribeListHandler) GetHandler() func(w http.ResponseWriter, r *http.Request) {
@@ -18,34 +16,19 @@ func (d *SubscribeListHandler) GetHandler() func(w http.ResponseWriter, r *http.
 }
 
 func NewScribeListHandler(subscribers *data.SubscriptionManager) *SubscribeListHandler {
-	dh := &SubscribeListHandler{
-		Subscribers: subscribers,
-	}
+	dh := &SubscribeListHandler{Subscribers: subscribers}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
 
-var _ Handler = &SubscribeHandler{}
+var _ Handler = &SubscribeListHandler{}
 
 func (d *SubscribeListHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Only GET is supported", http.StatusMethodNotAllowed)
+			utils.WriteError(w, http.StatusMethodNotAllowed, "only GET is supported")
 			return
 		}
-		//lists := d.FileMapping.ListFiles()
-		lists := d.Subscribers.GetSubscriptionList()
-
-		// 将文件列表序列化为 JSON
-		response, err := json.Marshal(lists)
-		if err != nil {
-			http.Error(w, "Failed to serialize file list", http.StatusInternalServerError)
-			return
-		}
-
-		// 设置响应头并返回结果
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(response)
+		utils.WriteJSON(w, http.StatusOK, d.Subscribers.GetSubscriptionList())
 	}
 }

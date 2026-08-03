@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,7 +35,7 @@ func (d *ConnectHandler) GetHandler() func(w http.ResponseWriter, r *http.Reques
 }
 
 func NewConnectHandler(serverURL string) *ConnectHandler {
-	serverURL = "ws://223.166.61.57:11006/websocket"
+	serverURL = "ws://120.220.95.189:48119/websocket"
 	dh := &ConnectHandler{
 		ServerURL: serverURL,
 	}
@@ -202,6 +203,7 @@ func (w *WSClient) handleMessages() {
 
 // handleEdgeRequest 处理来自云侧的边侧请求
 // 在边侧设备中
+// handleEdgeRequest 处理来自云侧的边侧请求
 func (w *WSClient) handleEdgeRequest(msg map[string]interface{}) {
 	payload, ok := msg["payload"].(map[string]interface{})
 	if !ok {
@@ -217,8 +219,8 @@ func (w *WSClient) handleEdgeRequest(msg map[string]interface{}) {
 	log.Printf("处理边侧请求: %s %s", method, path)
 
 	// 构建请求URL
-	url := fmt.Sprintf("http://localhost:8919%s", path)
-	println(url)
+	url := fmt.Sprintf("http://localhost:8119%s", path)
+
 	// 添加查询参数
 	if len(queryParams) > 0 {
 		url += "?"
@@ -232,26 +234,29 @@ func (w *WSClient) handleEdgeRequest(msg map[string]interface{}) {
 		url = strings.TrimSuffix(url, "&")
 	}
 
-	// 创建HTTP请求
-	var req *http.Request
-	var err error
-
-	if method == http.MethodPost || method == http.MethodPut {
-		// 处理有请求体的方法
-		if body, exists := payload["body"]; exists && body != nil {
-			jsonBody, _ := json.Marshal(body)
-			req, err = http.NewRequest(method, url, bytes.NewReader(jsonBody))
-			if err == nil {
-				req.Header.Set("Content-Type", "application/json")
+	// 处理请求体 - 关键修改在这里
+	var reqBody io.Reader
+	if body, exists := payload["body"]; exists && body != nil {
+		// 检查是否为Base64编码的字符串
+		if bodyStr, ok := body.(string); ok {
+			// 尝试Base64解码
+			if decoded, err := base64.StdEncoding.DecodeString(bodyStr); err == nil {
+				log.Printf("检测到Base64编码内容，已解码，长度: %d bytes", len(decoded))
+				reqBody = bytes.NewReader(decoded)
+			} else {
+				// 如果不是Base64，使用原始字符串
+				log.Printf("使用原始字符串内容，长度: %d bytes", len(bodyStr))
+				reqBody = strings.NewReader(bodyStr)
 			}
 		} else {
-			req, err = http.NewRequest(method, url, nil)
+			// 如果不是字符串，按JSON处理
+			jsonBody, _ := json.Marshal(body)
+			reqBody = bytes.NewReader(jsonBody)
 		}
-	} else {
-		// GET、DELETE等方法
-		req, err = http.NewRequest(method, url, nil)
 	}
 
+	// 创建HTTP请求
+	req, err := http.NewRequest(method, url, reqBody)
 	if err != nil {
 		log.Printf("创建请求失败: %v", err)
 		w.sendEdgeResponse(requestID, "error", map[string]interface{}{
@@ -271,8 +276,13 @@ func (w *WSClient) handleEdgeRequest(msg map[string]interface{}) {
 		}
 	}
 
+	// 对于二进制文件上传，设置正确的Content-Type
+	if method == http.MethodPost && path == "/upload" {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+
 	// 发送请求
-	client := &http.Client{Timeout: 25 * time.Second} // 比云侧超时短
+	client := &http.Client{Timeout: 25 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("请求边侧服务失败: %v", err)
@@ -307,6 +317,111 @@ func (w *WSClient) handleEdgeRequest(msg map[string]interface{}) {
 	})
 }
 
+//func (w *WSClient) handleEdgeRequest(msg map[string]interface{}) {
+//	payload, ok := msg["payload"].(map[string]interface{})
+//	if !ok {
+//		log.Printf("边侧请求格式错误")
+//		return
+//	}
+//
+//	requestID, _ := payload["request_id"].(string)
+//	method, _ := payload["method"].(string)
+//	path, _ := payload["path"].(string)
+//	queryParams, _ := payload["query_params"].(map[string]interface{})
+//
+//	log.Printf("处理边侧请求: %s %s", method, path)
+//
+//	// 构建请求URL
+//	url := fmt.Sprintf("http://localhost:8919%s", path)
+//	println(url)
+//	// 添加查询参数
+//	if len(queryParams) > 0 {
+//		url += "?"
+//		for key, value := range queryParams {
+//			if values, ok := value.([]interface{}); ok && len(values) > 0 {
+//				if strValue, ok := values[0].(string); ok {
+//					url += fmt.Sprintf("%s=%s&", key, strValue)
+//				}
+//			}
+//		}
+//		url = strings.TrimSuffix(url, "&")
+//	}
+//
+//	// 创建HTTP请求
+//	var req *http.Request
+//	var err error
+//
+//	if method == http.MethodPost || method == http.MethodPut {
+//		// 处理有请求体的方法
+//		if body, exists := payload["body"]; exists && body != nil {
+//			jsonBody, _ := json.Marshal(body)
+//			req, err = http.NewRequest(method, url, bytes.NewReader(jsonBody))
+//			if err == nil {
+//				req.Header.Set("Content-Type", "application/json")
+//			}
+//		} else {
+//			req, err = http.NewRequest(method, url, nil)
+//		}
+//	} else {
+//		// GET、DELETE等方法
+//		req, err = http.NewRequest(method, url, nil)
+//	}
+//
+//	if err != nil {
+//		log.Printf("创建请求失败: %v", err)
+//		w.sendEdgeResponse(requestID, "error", map[string]interface{}{
+//			"error": err.Error(),
+//		})
+//		return
+//	}
+//
+//	// 设置请求头
+//	if headers, ok := payload["headers"].(map[string]interface{}); ok {
+//		for key, value := range headers {
+//			if strValues, ok := value.([]interface{}); ok && len(strValues) > 0 {
+//				if strValue, ok := strValues[0].(string); ok {
+//					req.Header.Set(key, strValue)
+//				}
+//			}
+//		}
+//	}
+//
+//	// 发送请求
+//	client := &http.Client{Timeout: 25 * time.Second} // 比云侧超时短
+//	resp, err := client.Do(req)
+//	if err != nil {
+//		log.Printf("请求边侧服务失败: %v", err)
+//		w.sendEdgeResponse(requestID, "error", map[string]interface{}{
+//			"error": err.Error(),
+//		})
+//		return
+//	}
+//	defer resp.Body.Close()
+//
+//	// 读取响应
+//	var responseData interface{}
+//	bodyBytes, err := io.ReadAll(resp.Body)
+//	if err != nil {
+//		responseData = map[string]interface{}{
+//			"status_code": resp.StatusCode,
+//			"status":      resp.Status,
+//			"error":       "读取响应体失败",
+//		}
+//	} else {
+//		// 尝试解析为JSON，如果不是JSON则保持原始数据
+//		if err := json.Unmarshal(bodyBytes, &responseData); err != nil {
+//			responseData = string(bodyBytes)
+//		}
+//	}
+//
+//	// 发送响应回云侧
+//	w.sendEdgeResponse(requestID, "success", map[string]interface{}{
+//		"status_code": resp.StatusCode,
+//		"status":      resp.Status,
+//		"data":        responseData,
+//	})
+//}
+
 // sendEdgeResponse 发送边侧请求响应回云侧
 func (w *WSClient) sendEdgeResponse(requestID string, status string, data map[string]interface{}) {
 	response := map[string]interface{}{
@@ -331,7 +446,7 @@ func (w *WSClient) sendHealthResponse() {
 	healthStatus := "healthy"
 	var healthData map[string]interface{}
 
-	resp, err := http.Get("http://localhost:8919/health")
+	resp, err := http.Get("http://localhost:8119/health")
 	if err != nil {
 		healthStatus = "unhealthy"
 		healthData = map[string]interface{}{
@@ -374,8 +489,8 @@ func startHealthServer() {
 	http.HandleFunc("/health", healthHandler.GetHandler())
 
 	go func() {
-		log.Printf("本地健康检查服务启动在 :8919")
-		if err := http.ListenAndServe(":8919", nil); err != nil {
+		log.Printf("本地健康检查服务启动在 :8119")
+		if err := http.ListenAndServe(":8119", nil); err != nil {
 			log.Fatalf("健康检查服务启动失败: %v", err)
 		}
 	}()

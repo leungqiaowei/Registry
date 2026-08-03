@@ -6,7 +6,6 @@ import (
 	"hit.edu/framework/pkg/registry/data"
 	"hit.edu/framework/pkg/registry/utils"
 	"io"
-	"net"
 	"net/http"
 )
 
@@ -16,13 +15,9 @@ import (
 // Param filename
 // TODO:
 type DownloadHandler struct {
-	//
-	DataPath string
-	//
-	//FileMapping *data.FileMapping
+	DataPath     string
 	DataSpecList *data.DataSpecList
-	//
-	Handler func(w http.ResponseWriter, r *http.Request)
+	Handler      func(w http.ResponseWriter, r *http.Request)
 }
 
 func (d *DownloadHandler) GetHandler() func(w http.ResponseWriter, r *http.Request) {
@@ -30,10 +25,7 @@ func (d *DownloadHandler) GetHandler() func(w http.ResponseWriter, r *http.Reque
 }
 
 func NewDownloadHandler(dataPath string, dataSpecList *data.DataSpecList) *DownloadHandler {
-	dh := &DownloadHandler{
-		DataPath:     dataPath,
-		DataSpecList: dataSpecList,
-	}
+	dh := &DownloadHandler{DataPath: dataPath, DataSpecList: dataSpecList}
 	dh.Handler = dh.NewHandlerFunc()
 	return dh
 }
@@ -43,71 +35,56 @@ var _ Handler = &DownloadHandler{}
 func (d *DownloadHandler) NewHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Only GET is supported", http.StatusMethodNotAllowed)
+			utils.WriteError(w, http.StatusMethodNotAllowed, "only GET is supported")
 			return
 		}
 
 		fileName, tag, _, fileType, err := utils.GetFileParams(r, "v1.0.0")
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error getting file parameters: %v", err), http.StatusBadRequest)
+			utils.WriteError(w, http.StatusBadRequest, fmt.Sprintf("error getting file parameters: %v", err))
 			return
 		}
 
-		//clientAddr := r.RemoteAddr
-		// 提取 IP 地址，去掉端口
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		spec, err := d.DataSpecList.GetDataSpec(fileName, tag)
 		if err != nil {
-			http.Error(w, "Error parsing remote address", http.StatusInternalServerError)
+			utils.WriteError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		clientURL := fmt.Sprintf("http://%s:8080/receive?filename=%s", host, fileName)
 
 		switch fileType {
-		case "folder":
+		case "folder", "completion":
 			folderPath := d.DataSpecList.GetFilePath(fileName, tag)
-			//utils.Traverse("D:\\Programming\\GolandProjects\\Registry\\tmp\\data\\downloads", "http://localhost:8080/receive?filename=downloads")
-
-			err := utils.Traverse(folderPath, clientURL)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Error traversing directory: %v", err), http.StatusInternalServerError)
+			if folderPath == "" {
+				utils.WriteError(w, http.StatusNotFound, "folder not found")
 				return
 			}
+			if err := utils.Traverse(folderPath, r.URL.Query().Get("target")); err != nil {
+				utils.WriteError(w, http.StatusInternalServerError, fmt.Sprintf("error traversing directory: %v", err))
+				return
+			}
+			utils.WriteJSON(w, http.StatusOK, map[string]string{"message": "folder dispatched successfully"})
 		case "file":
-			//file, err := d.FileMapping.LoadFile(fileName, tag, d.DataPath)
 			file, err := d.DataSpecList.LoadFile(fileName, tag)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error loading file: %v", err), http.StatusNotFound)
+				utils.WriteError(w, http.StatusNotFound, fmt.Sprintf("error loading file: %v", err))
 				return
 			}
 			defer file.Close()
-			// 设置响应头，支持文件下载
-			//w.Header().Set("Content-Type", "text/plain")
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			//w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", url.QueryEscape(fileName)))
+			w.Header().Set("Content-Type", "application/octet-stream")
 			w.WriteHeader(http.StatusOK)
-			// 将文件内容写入响应
-			_, err = io.Copy(w, file)
-			if err != nil {
-				http.Error(w, "Failed to send file", http.StatusInternalServerError)
+			if _, err = io.Copy(w, file); err != nil {
+				logs.Infof("Failed to send file %s (tag: %s): %v", fileName, tag, err)
 				return
 			}
 			logs.Infof("File %s (tag: %s) downloaded successfully", fileName, tag)
-
 		default:
-			http.Error(w, "Invalid file type", http.StatusBadRequest)
+			utils.WriteError(w, http.StatusBadRequest, "invalid file type")
 			return
 		}
 
-		// 检查文件是否标记为永久存储
-		//isExits, _ := d.FileMapping.QueryFile(fileName, tag)
-		isExits, _ := d.DataSpecList.GetDataSpec(fileName, tag)
-		fmt.Printf("IsPermanent: %v", isExits)
-		if !isExits.IsPermanent {
-			// 文件未标记为永久存储，下载后删除文件
-			err := d.DataSpecList.DeleteFile(fileName, tag)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to delete file after download: %v", err), http.StatusInternalServerError)
-				return
+		if !spec.IsPermanent {
+			if err := d.DataSpecList.DeleteFile(fileName, tag); err != nil {
+				logs.Infof("Failed to delete non-permanent file %s (tag: %s): %v", fileName, tag, err)
 			}
 		}
 	}

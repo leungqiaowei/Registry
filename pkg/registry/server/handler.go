@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"hit.edu/framework/pkg/registry/data"
+	"hit.edu/framework/pkg/registry/edge"
 	"hit.edu/framework/pkg/registry/server/handler"
 )
 
@@ -23,10 +24,8 @@ type RegistryHandler struct {
 	// 处理文件接收
 	ReceiveHandler handler.Handler
 	// 处理文件删除
-	// TODO:
 	DeleteHandler handler.Handler
 	// 处理文件查询
-	// TODO:
 	QueryIsExistsHandler handler.Handler
 	// 处理文件列表查询
 	QueryListHandler handler.Handler
@@ -39,16 +38,15 @@ type RegistryHandler struct {
 	// 处理文件目录下载
 	CatalogueDownloadHandler handler.Handler
 
-	// 处理长连接ip保持
-	WebSocketHandler   handler.Handler
-	ClientsHandler     handler.Handler
-	HealthHandler      handler.Handler
-	EdgeRequestProxy   handler.Handler
-	EdgeConnectHandler handler.Handler
+	// 云边反向隧道相关接口
+	WebSocketHandler handler.Handler
+	ClientsHandler   handler.Handler
+	HealthHandler    handler.Handler
+	EdgeRequestProxy handler.Handler
 }
 
 func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscribers *data.SubscriptionManager) *RegistryHandler {
-	// TODO: Download等改成Handler, 实现ServeHTTP等函数
+	tunnelManager := edge.NewTunnelManager()
 	rh := &RegistryHandler{
 		UploadHandler:        handler.NewUploadHandler(dataPath, dataSpecList),
 		DownloadHandler:      handler.NewDownloadHandler(dataPath, dataSpecList),
@@ -59,16 +57,12 @@ func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscr
 		QueryListHandler:     handler.NewQueryListHandler(dataPath, dataSpecList),
 		SubscribeHandler:     handler.NewSubscribeHandler(subscribers),
 		SubscribeListHandler: handler.NewScribeListHandler(subscribers),
-		//CatalogueUploadHandler:   handler.NewCatalogueUploadHandler(dataPath, fileMapping),
-		//CatalogueDownloadHandler: handler.NewCatalogueDownloadHandler(dataPath, fileMapping),
-		WebSocketHandler:   handler.NewWebSocketHandler(),
-		ClientsHandler:     handler.NewClientsListHandler(),
-		HealthHandler:      handler.NewHealthCheckHandler(),
-		EdgeRequestProxy:   handler.NewEdgeRequestHandler(),
-		EdgeConnectHandler: handler.NewConnectHandler(dataPath),
+		WebSocketHandler:     handler.NewWebSocketHandler(tunnelManager),
+		ClientsHandler:       handler.NewClientsListHandler(tunnelManager),
+		HealthHandler:        handler.NewHealthCheckHandler(tunnelManager),
+		EdgeRequestProxy:     handler.NewEdgeRequestHandler(tunnelManager),
 	}
 
-	// TODO: 临时用法,注册路由
 	http.HandleFunc("/download", rh.DownloadHandler.GetHandler())
 	http.HandleFunc("/upload", rh.UploadHandler.GetHandler())
 	http.HandleFunc("/forward", rh.ForwardHandler.GetHandler())
@@ -78,10 +72,9 @@ func NewRegistryHandler(dataPath string, dataSpecList *data.DataSpecList, subscr
 	http.HandleFunc("/query/list", rh.QueryListHandler.GetHandler())
 	http.HandleFunc("/subscribe", rh.SubscribeHandler.GetHandler())
 	http.HandleFunc("/subscribe/list", rh.SubscribeListHandler.GetHandler())
-	http.HandleFunc("/websocket", rh.WebSocketHandler.GetHandler())
+	http.HandleFunc("/edge/ws", rh.WebSocketHandler.GetHandler())
 	http.HandleFunc("/edge/clients", rh.ClientsHandler.GetHandler())
 	http.HandleFunc("/edge/health", rh.HealthHandler.GetHandler())
-	http.HandleFunc("/edge/connect", rh.EdgeConnectHandler.GetHandler())
 	http.HandleFunc("/edges/", rh.EdgeRequestProxy.GetHandler())
 	return rh
 }
